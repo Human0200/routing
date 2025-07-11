@@ -1,0 +1,40 @@
+### PHP ###
+# Файлы окружения
+.env
+.env.local
+.env.*.local
+
+# Composer
+/vendor/
+composer.lock
+composer.phar
+
+# Логи и кэш
+/storage/*.log
+/storage/framework/cache/
+/storage/framework/views/
+
+# Системные файлы
+.DS_Store
+.idea/
+*.swp
+*.swo
+Thumbs.db
+
+# Битрикс (если используется)
+/bitrix/backup/
+/bitrix/managed_cache/
+/bitrix/cache/
+/bitrix/stack_cache/
+/bitrix/html_pages/
+/bitrix/tmp/
+/upload/
+
+# Node.js (если есть фронтенд)
+/node_modules/
+npm-debug.log
+yarn-error.log
+
+# IDE
+.phpunit.result.cache
+.php-cs-fixer.cache
