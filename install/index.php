@@ -8,7 +8,7 @@ use Bitrix\Main\Config\Option;
 
 Loc::loadMessages(__FILE__);
 
-class class_of_module extends CModule
+class bg_routing extends CModule
 {
     public $MODULE_ID = "bg.routing";
     public $MODULE_VERSION;
@@ -102,7 +102,7 @@ class class_of_module extends CModule
     {
 
         CAgent::AddAgent(
-            "\\LeadSpace\\AgentFunctions\\Agent::run();", // Команда для выполнения
+            "\\Background\\AgentFunctions\\Agent::run();", // Команда для выполнения
             "bg.routing",                      // Модуль
             "N",                                  // Не повторять при ошибке
             300,                                // Интервал 

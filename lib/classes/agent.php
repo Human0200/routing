@@ -10,7 +10,7 @@ class Agent
     public static function run()
     {
         try {
-            if (!Loader::includeModule('bg.routing') || !Loader::includeModule('crm')) {
+            if (!Loader::includeModule('bg.routing')) {
                 return __METHOD__ . '(1);';
             }
             include_once __DIR__.'/../rout.php';
