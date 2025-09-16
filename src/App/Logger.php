@@ -1,5 +1,5 @@
 <?php
-namespace App;
+namespace Background\App;
 
 use Monolog\Handler\RotatingFileHandler;
 use Monolog\Handler\StreamHandler;

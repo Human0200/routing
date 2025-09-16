@@ -5,6 +5,8 @@
 .env.*.local
 .vscode
 
+*.zip
+*.log
 # Composer
 /vendor/
 composer.lock

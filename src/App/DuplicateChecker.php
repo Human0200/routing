@@ -1,5 +1,5 @@
 <?php
-namespace App;
+namespace Background\App;
 
 use Bitrix\Crm\Service\Container;
 use Bitrix\Main\Loader;

@@ -1,5 +1,5 @@
 <?php
-namespace App;
+namespace Background\App;
 
 use Bitrix\Crm\Service\Container;
 use Bitrix\Main\Loader;
@@ -64,9 +64,6 @@ class DebugHelper
     // In App\DebugHelper class
     public static function printItemDetails($processId, $elementId)
     {
-        if (! self::isDebugMode()) {
-            return;
-        }
 
         $element = \Bitrix\Crm\Service\Container::getInstance()
             ->getFactory($processId)
