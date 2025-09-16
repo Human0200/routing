@@ -1,194 +1,340 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-require __DIR__ . '/../vendor/autoload.php';
+namespace Background\Main;
+require_once __DIR__ . '/../vendor/autoload.php';
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use Exception;
 
-// Улучшенная функция поиска вложений с подробным логированием
-function findAttachments($structure, $prefix = '', $debugFile) {
-    $list = [];
-    $partNum = $prefix ?: '1';
+class EmailProcessor
+{
+    private $imapServer;
+    private $login;
+    private $password;
+    private $imap;
+    private $debugFile;
+    private $outputFile;
+    private $maxExecutionTime;
+    private $messagesLimit;
+    private $enableDebugLog;
 
-    file_put_contents($debugFile, "\nChecking part $partNum\n", FILE_APPEND);
-    file_put_contents($debugFile, "Structure type: {$structure->type}\n", FILE_APPEND);
-    
-    $isAttachment = false;
-    $filename = '';
+    public function __construct(array $config = [])
+    {
+        // Настройки по умолчанию
+        $this->imapServer = $config['imap_server'] ?? '{10.81.65.12:993/imap/ssl/novalidate-cert}INBOX';
+        $this->login = $config['login'] ?? 'bitrix_test@gardiask.ru';
+        $this->password = $config['password'] ?? '3fsg7wKXJoDsrQCpMyEE';
+        $this->debugFile = $config['debug_file'] ?? __DIR__ . '/debug_log.txt';
+        $this->outputFile = $config['output_file'] ?? __DIR__ . '/parsed_output.txt';
+        $this->maxExecutionTime = $config['max_execution_time'] ?? 300;
+        $this->messagesLimit = $config['messages_limit'] ?? 10;
+        $this->enableDebugLog = $config['enable_debug_log'] ?? false;
 
-    // 1) Проверка dparameters
-    if (!empty($structure->ifdparameters)) {
-        file_put_contents($debugFile, "Checking dparameters...\n", FILE_APPEND);
-        foreach ($structure->dparameters as $p) {
-            file_put_contents($debugFile, "dparameter: {$p->attribute} = {$p->value}\n", FILE_APPEND);
-            $attr = strtolower($p->attribute);
-            if (in_array($attr, ['filename', 'name'], true)) {
-                $decoded = iconv_mime_decode($p->value, 0, 'UTF-8');
-                $isAttachment = true;
-                $filename = $decoded;
-                file_put_contents($debugFile, "Found filename in dparameters: $filename\n", FILE_APPEND);
-            }
-        }
+        // Настройка PHP
+        error_reporting(E_ALL);
+        ini_set('display_errors', 1);
+        ini_set('max_execution_time', $this->maxExecutionTime);
+
+        // Инициализация файлов
+        $this->initializeFiles();
     }
 
-    // 2) Проверка parameters
-    if (!$isAttachment && !empty($structure->ifparameters)) {
-        file_put_contents($debugFile, "Checking parameters...\n", FILE_APPEND);
-        foreach ($structure->parameters as $p) {
-            file_put_contents($debugFile, "parameter: {$p->attribute} = {$p->value}\n", FILE_APPEND);
-            $attr = strtolower($p->attribute);
-            if (in_array($attr, ['filename', 'name'], true)) {
-                $decoded = iconv_mime_decode($p->value, 0, 'UTF-8');
-                $isAttachment = true;
-                $filename = $decoded;
-                file_put_contents($debugFile, "Found filename in parameters: $filename\n", FILE_APPEND);
-            }
-        }
+    private function initializeFiles()
+    {
+        file_put_contents($this->outputFile, "");
+        file_put_contents($this->debugFile, "");
     }
 
-    // 3) Проверка disposition
-    if (!$isAttachment && !empty($structure->ifdisposition)) {
-        file_put_contents($debugFile, "Disposition: {$structure->disposition}\n", FILE_APPEND);
-        if (strtolower($structure->disposition) === 'attachment' && !empty($structure->dparameters)) {
-            file_put_contents($debugFile, "Checking attachment disposition...\n", FILE_APPEND);
+    private function logMessage($message)
+    {
+        if (!$this->enableDebugLog) {
+            return;
+        }
+        $timestamp = date('Y-m-d H:i:s');
+        file_put_contents($this->debugFile, "[$timestamp] $message\n", FILE_APPEND);
+    }
+
+    private function findAttachments($structure, $prefix = '')
+    {
+        $list = [];
+        $partNum = $prefix ?: '1';
+
+        $isAttachment = false;
+        $filename = '';
+
+        // 1) Проверка dparameters
+        if (!empty($structure->ifdparameters)) {
             foreach ($structure->dparameters as $p) {
-                file_put_contents($debugFile, "disposition parameter: {$p->attribute} = {$p->value}\n", FILE_APPEND);
                 $attr = strtolower($p->attribute);
                 if (in_array($attr, ['filename', 'name'], true)) {
                     $decoded = iconv_mime_decode($p->value, 0, 'UTF-8');
                     $isAttachment = true;
                     $filename = $decoded;
-                    file_put_contents($debugFile, "Found filename in disposition: $filename\n", FILE_APPEND);
                 }
             }
         }
+
+        // 2) Проверка parameters
+        if (!$isAttachment && !empty($structure->ifparameters)) {
+            foreach ($structure->parameters as $p) {
+                $attr = strtolower($p->attribute);
+                if (in_array($attr, ['filename', 'name'], true)) {
+                    $decoded = iconv_mime_decode($p->value, 0, 'UTF-8');
+                    $isAttachment = true;
+                    $filename = $decoded;
+                }
+            }
+        }
+
+        // 3) Проверка disposition
+        if (!$isAttachment && !empty($structure->ifdisposition)) {
+            if (strtolower($structure->disposition) === 'attachment' && !empty($structure->dparameters)) {
+                foreach ($structure->dparameters as $p) {
+                    $attr = strtolower($p->attribute);
+                    if (in_array($attr, ['filename', 'name'], true)) {
+                        $decoded = iconv_mime_decode($p->value, 0, 'UTF-8');
+                        $isAttachment = true;
+                        $filename = $decoded;
+                    }
+                }
+            }
+        }
+
+        if ($isAttachment) {
+            $list[] = [
+                'partNum' => $partNum,
+                'filename' => $filename,
+                'encoding' => $structure->encoding,
+            ];
+        }
+
+        // Рекурсия по вложенным частям
+        if (!empty($structure->parts)) {
+            foreach ($structure->parts as $i => $sub) {
+                $newPrefix = $prefix ? $prefix . '.' . ($i + 1) : (string)($i + 1);
+                $list = array_merge($list, $this->findAttachments($sub, $newPrefix));
+            }
+        }
+
+        return $list;
     }
 
-    if ($isAttachment) {
-        $list[] = [
-            'partNum' => $partNum,
-            'filename' => $filename,
-            'encoding' => $structure->encoding,
-        ];
-        file_put_contents($debugFile, "Added attachment: " . print_r(end($list), true) . "\n", FILE_APPEND);
-    } else {
-        file_put_contents($debugFile, "No attachment found in this part\n", FILE_APPEND);
+    public function connect()
+    {
+        $this->logMessage("Trying to connect to IMAP server: {$this->imapServer}");
+        
+        $context = stream_context_create([
+            'socket' => [
+                'connect_timeout' => 10,
+                'timeout' => 15
+            ],
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            ]
+        ]);
+
+        $this->imap = @imap_open(
+            $this->imapServer,
+            $this->login,
+            $this->password,
+            OP_HALFOPEN,
+            1,
+            [
+                'DISABLE_AUTHENTICATOR' => 'GSSAPI',
+                'STREAM_CONTEXT' => $context
+            ]
+        );
+
+        if (!$this->imap) {
+            $error = "Ошибка подключения к IMAP: " . imap_last_error();
+            $this->logMessage($error);
+            throw new Exception($error);
+        }
+
+        $this->logMessage("Successfully connected to IMAP server");
+        return true;
     }
 
-    // Рекурсия по вложенным частям
-    if (!empty($structure->parts)) {
-        file_put_contents($debugFile, "Checking subparts (count: " . count($structure->parts) . ")\n", FILE_APPEND);
-        foreach ($structure->parts as $i => $sub) {
-            $newPrefix = $prefix ? $prefix . '.' . ($i + 1) : (string)($i + 1);
-            $list = array_merge($list, findAttachments($sub, $newPrefix, $debugFile));
+    public function disconnect()
+    {
+        if ($this->imap) {
+            imap_close($this->imap);
+            $this->imap = null;
+            $this->logMessage("Disconnected from IMAP server");
         }
     }
 
-    return $list;
-}
-
-// Основной код
-$imapServer = '{10.81.65.12:993/imap/ssl/novalidate-cert}INBOX';
-$login = 'bitrix_test@gardiask.ru';
-$password = '3fsg7wKXJoDsrQCpMyEE';
-
-$outputFile = __DIR__ . '/parsed_output.txt';
-$debugFile = __DIR__ . '/debug_log.txt';
-file_put_contents($outputFile, "");
-file_put_contents($debugFile, "Starting email processing...\n");
-
-$imap = imap_open($imapServer, $login, $password) or die('Ошибка подключения: ' . imap_last_error());
-
-$total = imap_num_msg($imap);
-file_put_contents($debugFile, "Total messages: $total\n", FILE_APPEND);
-
-if ($total === 0) {
-    file_put_contents($debugFile, "No messages in mailbox\n", FILE_APPEND);
-    exit;
-}
-
-// Обрабатываем все письма, начиная с самого нового
-for ($i = $total; $i >= 1; $i--) {
-    file_put_contents($debugFile, "\nProcessing message #$i\n", FILE_APPEND);
-    
-    $header = imap_headerinfo($imap, $i);
-    $subject = !empty($header->subject) ? mb_decode_mimeheader($header->subject) : 'Без темы';
-    file_put_contents($debugFile, "Subject: $subject\n", FILE_APPEND);
-    file_put_contents($debugFile, "Date: " . $header->date . "\n", FILE_APPEND);
-
-    // Получаем структуру письма
-    $struc = imap_fetchstructure($imap, $i);
-    file_put_contents($debugFile, "Full structure:\n" . print_r($struc, true) . "\n", FILE_APPEND);
-
-    // Ищем все вложения
-    $atts = findAttachments($struc, '', $debugFile);
-    file_put_contents($debugFile, "All attachments found: " . print_r($atts, true) . "\n", FILE_APPEND);
-
-    // Фильтруем только .xlsx
-    $xlsx = array_filter($atts, function ($a) use ($debugFile) {
-        $isXlsx = preg_match('/\.xlsx$/i', $a['filename']);
-        file_put_contents($debugFile, "Checking file {$a['filename']} - is XLSX: " . ($isXlsx ? 'yes' : 'no') . "\n", FILE_APPEND);
-        return $isXlsx;
-    });
-
-    if (empty($xlsx)) {
-        $note = "Письмо #{$i}, тема: «{$subject}» — вложений .xlsx не обнаружено.\n";
-        file_put_contents($outputFile, $note, FILE_APPEND);
-        file_put_contents($debugFile, $note, FILE_APPEND);
-        continue;
+    public function getTotalMessages()
+    {
+        if (!$this->imap) {
+            throw new Exception("Not connected to IMAP server");
+        }
+        return imap_num_msg($this->imap);
     }
 
-    // Обрабатываем каждое .xlsx вложение
-    foreach ($xlsx as $att) {
-        file_put_contents($debugFile, "Processing XLSX attachment: " . print_r($att, true) . "\n", FILE_APPEND);
-        
+    public function processEmails($limit = null)
+    {
+        if (!$this->imap) {
+            throw new Exception("Not connected to IMAP server. Call connect() first.");
+        }
+
+        $total = $this->getTotalMessages();
+        $this->logMessage("Total messages: $total");
+
+        if ($total === 0) {
+            $this->logMessage("No messages in mailbox");
+            return [];
+        }
+
+        $processLimit = $limit ?? $this->messagesLimit;
+        $start = max(1, $total - $processLimit + 1);
+        $end = $total;
+
+        $this->logMessage("Processing messages from $start to $end (last $processLimit messages)");
+
+        $results = [];
+
+        for ($i = $end; $i >= $start; $i--) {
+            $result = $this->processMessage($i);
+            if ($result) {
+                $results[] = $result;
+            }
+        }
+
+        return $results;
+    }
+
+    public function processMessage($messageNum)
+    {
+        $this->logMessage("Processing message #$messageNum");
+
+        // Проверяем соединение
+        if (!imap_ping($this->imap)) {
+            throw new Exception("IMAP connection lost during processing");
+        }
+
+        $header = imap_headerinfo($this->imap, $messageNum);
+        $subject = !empty($header->subject) ? mb_decode_mimeheader($header->subject) : 'Без темы';
+        $this->logMessage("Subject: $subject");
+
+        // Получаем структуру письма
+        $struc = imap_fetchstructure($this->imap, $messageNum);
+        if (!$struc) {
+            $this->logMessage("Failed to get message structure");
+            return null;
+        }
+
+        // Ищем все вложения
+        $atts = $this->findAttachments($struc);
+
+        // Фильтруем только .xlsx
+        $xlsx = array_filter($atts, function ($a) {
+            return preg_match('/\.xlsx$/i', $a['filename']);
+        });
+
+        if (empty($xlsx)) {
+            $note = "Письмо #{$messageNum}, тема: «{$subject}» — вложений .xlsx не обнаружено.";
+            $this->logMessage($note);
+            return null;
+        }
+
+        $messageResult = [
+            'message_num' => $messageNum,
+            'subject' => $subject,
+            'date' => $header->date,
+            'attachments' => []
+        ];
+
+        // Обрабатываем каждое .xlsx вложение
+        foreach ($xlsx as $att) {
+            $attachmentData = $this->processAttachment($messageNum, $att, $subject);
+            if ($attachmentData) {
+                $messageResult['attachments'][] = $attachmentData;
+            }
+        }
+
+        return $messageResult;
+    }
+
+    private function processAttachment($messageNum, $att, $subject)
+    {
+        $this->logMessage("Processing XLSX attachment: {$att['filename']}");
+
         try {
-            $data = imap_fetchbody($imap, $i, $att['partNum']);
-            file_put_contents($debugFile, "Raw data size: " . strlen($data) . " bytes\n", FILE_APPEND);
+            $data = imap_fetchbody($this->imap, $messageNum, $att['partNum']);
 
             // Декодируем
             if ($att['encoding'] == 3) {
                 $data = base64_decode($data);
-                file_put_contents($debugFile, "After base64 decode: " . strlen($data) . " bytes\n", FILE_APPEND);
             } elseif ($att['encoding'] == 4) {
                 $data = quoted_printable_decode($data);
-                file_put_contents($debugFile, "After quoted-printable decode: " . strlen($data) . " bytes\n", FILE_APPEND);
             }
 
             // Сохраняем временный файл
-            $tmpPath = __DIR__ . '/tmp_' . uniqid() . '.xlsx';
+            $tmpPath = sys_get_temp_dir() . '/tmp_' . uniqid() . '.xlsx';
             file_put_contents($tmpPath, $data);
-            file_put_contents($debugFile, "Saved to temp file: $tmpPath (" . filesize($tmpPath) . " bytes)\n", FILE_APPEND);
 
             // Парсим XLSX
             $spreadsheet = IOFactory::load($tmpPath);
             $sheet = $spreadsheet->getActiveSheet();
             $maxRow = $sheet->getHighestRow();
             $maxCol = $sheet->getHighestColumn();
-            file_put_contents($debugFile, "Spreadsheet dimensions: rows=$maxRow, cols=$maxCol\n", FILE_APPEND);
 
-            // Формируем вывод
-            $txt = "Письмо #{$i}, тема: «{$subject}», файл: {$att['filename']}\n";
+            // Извлекаем данные
+            $sheetData = [];
             for ($r = 1; $r <= $maxRow; ++$r) {
-                $cells = [];
+                $rowData = [];
                 for ($c = 'A'; $c <= $maxCol; ++$c) {
-                    $cells[] = $sheet->getCell("{$c}{$r}")->getValue();
+                    $rowData[] = $sheet->getCell("{$c}{$r}")->getValue();
                 }
-                $txt .= implode(";", $cells) . "\n";
+                $sheetData[] = $rowData;
+            }
+
+            // Формируем вывод для файла
+            $txt = "Письмо #{$messageNum}, тема: «{$subject}», файл: {$att['filename']}\n";
+            foreach ($sheetData as $row) {
+                $txt .= implode(";", $row) . "\n";
             }
             $txt .= str_repeat("—", 40) . "\n";
 
-            file_put_contents($outputFile, $txt, FILE_APPEND);
-            file_put_contents($debugFile, "Successfully parsed and saved data\n", FILE_APPEND);
-            
+            file_put_contents($this->outputFile, $txt, FILE_APPEND);
+
             unlink($tmpPath);
+
+            $this->logMessage("Successfully processed attachment: {$att['filename']}");
+
+            return [
+                'filename' => $att['filename'],
+                'rows' => $maxRow,
+                'cols' => $maxCol,
+                'data' => $sheetData
+            ];
+
         } catch (Exception $e) {
-            $error = "Error processing attachment: " . $e->getMessage() . "\n";
-            file_put_contents($debugFile, $error, FILE_APPEND);
-            file_put_contents($outputFile, $error, FILE_APPEND);
+            $error = "Error processing attachment {$att['filename']}: " . $e->getMessage();
+            $this->logMessage($error);
+            file_put_contents($this->outputFile, $error . "\n", FILE_APPEND);
+            return null;
         }
     }
-}
 
-imap_close($imap);
-file_put_contents($debugFile, "Processing complete\n", FILE_APPEND);
-echo "Готово! Проверьте файлы:\n- parsed_output.txt\n- debug_log.txt\n";
+    public function getOutputFile()
+    {
+        return $this->outputFile;
+    }
+
+    public function getDebugFile()
+    {
+        return $this->debugFile;
+    }
+
+    public function setDebugMode($enabled)
+    {
+        $this->enableDebugLog = $enabled;
+    }
+
+    public function __destruct()
+    {
+        $this->disconnect();
+    }
+}
