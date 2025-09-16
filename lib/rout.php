@@ -36,6 +36,7 @@ class EmailProcessor
         // Инициализация файлов
         $this->initializeFiles();
     }
+    
 
     private function initializeFiles()
     {
@@ -117,43 +118,93 @@ class EmailProcessor
         return $list;
     }
 
-    public function connect()
-    {
-        $this->logMessage("Trying to connect to IMAP server: {$this->imapServer}");
-        
-        $context = stream_context_create([
-            'socket' => [
-                'connect_timeout' => 10,
-                'timeout' => 15
-            ],
-            'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false,
-                'allow_self_signed' => true
-            ]
-        ]);
-
-        $this->imap = @imap_open(
-            $this->imapServer,
-            $this->login,
-            $this->password,
-            OP_HALFOPEN,
-            1,
-            [
-                'DISABLE_AUTHENTICATOR' => 'GSSAPI',
-                'STREAM_CONTEXT' => $context
-            ]
-        );
-
-        if (!$this->imap) {
-            $error = "Ошибка подключения к IMAP: " . imap_last_error();
-            $this->logMessage($error);
-            throw new Exception($error);
-        }
-
-        $this->logMessage("Successfully connected to IMAP server");
+    /**
+ * Быстрая проверка доступности IMAP сервера перед подключением
+ */
+public function checkServerAvailability()
+{
+    // Извлекаем хост и порт из IMAP строки подключения
+    preg_match('/\{([^:]+):(\d+)/', $this->imapServer, $matches);
+    
+    if (count($matches) < 3) {
+        $this->logMessage("Cannot parse IMAP server string: {$this->imapServer}");
+        return false;
+    }
+    
+    $host = $matches[1];
+    $port = (int)$matches[2];
+    
+    $this->logMessage("Checking availability of $host:$port");
+    
+    $startTime = microtime(true);
+    
+    // Быстрая проверка через fsockopen с коротким таймаутом
+    $fp = @fsockopen($host, $port, $errno, $errstr, 2);
+    $checkTime = round(microtime(true) - $startTime, 2);
+    
+    if ($fp) {
+        fclose($fp);
+        $this->logMessage("Server $host:$port is available ({$checkTime}s)");
         return true;
     }
+    
+    $this->logMessage("Server $host:$port is NOT available ({$checkTime}s): $errno - $errstr");
+    return false;
+}
+
+/**
+ * Модифицированный метод подключения с предварительной проверкой
+ */
+public function connect()
+{
+    $this->logMessage("Starting connection process to: {$this->imapServer}");
+    
+    // Сначала проверяем доступность сервера
+    if (!$this->checkServerAvailability()) {
+        throw new Exception("IMAP server is not available");
+    }
+    
+    $this->logMessage("Server available, attempting IMAP connection");
+    
+    // Очень короткие таймауты для быстрой проверки
+    $context = stream_context_create([
+        'socket' => [
+            'connect_timeout' => 2, // Еще короче
+            'timeout' => 3
+        ],
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            'allow_self_signed' => true
+        ]
+    ]);
+
+    $connectionStart = microtime(true);
+    
+    $this->imap = @imap_open(
+        $this->imapServer,
+        $this->login,
+        $this->password,
+        OP_HALFOPEN,
+        1,
+        [
+            'DISABLE_AUTHENTICATOR' => 'GSSAPI',
+            'STREAM_CONTEXT' => $context
+        ]
+    );
+    
+    $connectionTime = round(microtime(true) - $connectionStart, 2);
+    $this->logMessage("IMAP connection attempt took {$connectionTime}s");
+    
+    if (!$this->imap) {
+        $error = "IMAP connection failed: " . imap_last_error();
+        $this->logMessage($error);
+        throw new Exception($error);
+    }
+
+    $this->logMessage("Successfully connected to IMAP server");
+    return true;
+}
 
     public function disconnect()
     {

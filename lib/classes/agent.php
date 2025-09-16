@@ -22,13 +22,14 @@ class Agent
             if (!$connection) {
                 // echo "Not connected to IMAP server. Call connect() first.";
                 file_put_contents(__DIR__ . '/debug_log.txt', "Not connected to IMAP server. Call connect() first.\n", FILE_APPEND);
-                return "\\Background\\AgentFunctions\\Agent::run();";
+                return __METHOD__ . '(2);';
             }
             $results = $processor->processEmails(5);
             //echo "Processed " . count($results) . " emails.\n";
-            return "\\Background\\AgentFunctions\\Agent::run();";
+            return __METHOD__ . '(3);';
         } catch (Exception $e) {
-            return "\\Background\\AgentFunctions\\Agent::run();";
+            file_put_contents(__DIR__ . '/debug_log.txt', $e->getMessage() . "\n", FILE_APPEND);
+            return __METHOD__ . '(4);';
         }
     }
 }
