@@ -26,7 +26,8 @@ class EmailProcessor
         $this->outputFile = $config['output_file'] ?? __DIR__ . '/parsed_output.txt';
         $this->maxExecutionTime = $config['max_execution_time'] ?? 300;
         $this->messagesLimit = $config['messages_limit'] ?? 10;
-        $this->enableDebugLog = $config['enable_debug_log'] ?? false;
+		//$this->enableDebugLog = $config['enable_debug_log'] ?? false;
+		$this->enableDebugLog = true;
 
         // Настройка PHP
         error_reporting(E_ALL);
@@ -152,45 +153,18 @@ public function checkServerAvailability()
     return false;
 }
 
-/**
- * Модифицированный метод подключения с предварительной проверкой
- */
 public function connect()
 {
     $this->logMessage("Starting connection process to: {$this->imapServer}");
     
-    // Сначала проверяем доступность сервера
-    if (!$this->checkServerAvailability()) {
-        throw new Exception("IMAP server is not available");
-    }
-    
-    $this->logMessage("Server available, attempting IMAP connection");
-    
-    // Очень короткие таймауты для быстрой проверки
-    $context = stream_context_create([
-        'socket' => [
-            'connect_timeout' => 2, // Еще короче
-            'timeout' => 3
-        ],
-        'ssl' => [
-            'verify_peer' => false,
-            'verify_peer_name' => false,
-            'allow_self_signed' => true
-        ]
-    ]);
-
     $connectionStart = microtime(true);
     
+    // Используйте 0 вместо OP_HALFOPEN
     $this->imap = @imap_open(
         $this->imapServer,
         $this->login,
         $this->password,
-        OP_HALFOPEN,
-        1,
-        [
-            'DISABLE_AUTHENTICATOR' => 'GSSAPI',
-            'STREAM_CONTEXT' => $context
-        ]
+        0 // Стандартный режим чтения/записи
     );
     
     $connectionTime = round(microtime(true) - $connectionStart, 2);
