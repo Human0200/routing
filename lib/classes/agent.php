@@ -20,11 +20,11 @@ class Agent
             // Запускаем через командную строку
             $command = 'php -f ' . escapeshellarg($scriptPath) . ' 2>&1';
             $result = shell_exec($command);
-            // file_put_contents(
-            //     __DIR__ . '/agent_exec_log.txt',
-            //     date('Y-m-d H:i:s') . " - Command: $command\nResult: $result\n\n",
-            //     FILE_APPEND
-            // );
+            file_put_contents(
+                __DIR__ . '/agent_exec_log.txt',
+                date('Y-m-d H:i:s') . " - Command: $command\nResult: $result\n\n",
+                FILE_APPEND
+            );
         }
 
             return __METHOD__ . '(3);';
