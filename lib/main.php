@@ -28,37 +28,24 @@ class EmailProcessor
     /**
      * Инициализация окружения и зависимостей
      */
-    private function initializeEnvironment()
-    {
-        ini_set('display_errors', 1);
-        ini_set('display_startup_errors', 1);
-        error_reporting(E_ALL);
-        if (!Loader::includeModule('bg.routing')) {
-            file_put_contents(__DIR__ . '/debug_log.txt', "Module bg.routing not found\n", FILE_APPEND);
-            return __METHOD__ . '(1);';
-        }
-        // Проверка окружения
-        echo '<h3>Environment Check</h3>';
-        echo 'PHP Version: ' . PHP_VERSION . '<br>';
-        echo 'Current dir: ' . __DIR__ . '<br>';
-        echo 'Document root: ' . ($_SERVER['DOCUMENT_ROOT'] ?? 'not set') . '<br>';
-
-        require_once __DIR__ . '/../vendor/autoload.php';
-
-        // Проверка загрузки autoload
-        if (!class_exists('Composer\Autoload\ClassLoader')) {
-            die('Composer autoloader not found! Run "composer install"');
-        }
-
-        // Подключение Битрикса
-        $bitrixRoot = $_SERVER['DOCUMENT_ROOT'] ?? __DIR__ . '/..';
-        require_once($_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/prolog_before.php');
-
-        // Проверка загрузки Битрикса
-        if (!defined('B_PROLOG_INCLUDED')) {
-            die('Bitrix prolog not loaded correctly');
-        }
+private function initializeEnvironment()
+{
+    if (!Loader::includeModule('bg.routing')) {
+        throw new \Exception("Module bg.routing not found");
     }
+
+    // Проверяем, что Битрикс уже инициализирован
+    if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) {
+        throw new \Exception("Bitrix not initialized");
+    }
+
+    require_once __DIR__ . '/../vendor/autoload.php';
+
+    // Проверка загрузки autoload
+    if (!class_exists('Composer\Autoload\ClassLoader')) {
+        throw new \Exception('Composer autoloader not found! Run "composer install"');
+    }
+}
 
     /**
      * Инициализация компонентов приложения
@@ -78,12 +65,6 @@ class EmailProcessor
     public function processEmails(int $limit = 0): int
     {
         $this->logger->info("Starting email processing" . ($limit > 0 ? " with limit: {$limit}" : ""));
-
-        // Отладочный вывод структуры смарт-процесса
-        if (Config::isDebugMode()) {
-            DebugHelper::printSmartProcessStructure(Config::getSmartProcessId());
-            DebugHelper::printRecentItems(Config::getSmartProcessId(), 5);
-        }
 
         try {
             // Получение сообщений
@@ -273,11 +254,6 @@ class EmailProcessor
                     'filename' => $attachment['filename'],
                 ]);
 
-                // Отладочный вывод созданного элемента
-                if (Config::isDebugMode()) {
-                    DebugHelper::printItemDetails(Config::getSmartProcessId(), $elementId);
-                }
-
                 return true;
             }
         } catch (\Exception $e) {
@@ -307,12 +283,12 @@ class EmailProcessor
             // Сохраняем файл
             $result = file_put_contents($filename, $content);
             if ($result !== false) {
-                echo "Файл {$filename} успешно сохранен!";
+                //echo "Файл {$filename} успешно сохранен!";
                 return true;
             }
         }
 
-        echo "Вложение не найдено или не удалось сохранить.";
+        //echo "Вложение не найдено или не удалось сохранить.";
         return false;
     }
 
@@ -354,12 +330,7 @@ class EmailProcessor
 
         // Дополнительный вывод для отладки
         if (Config::isDebugMode()) {
-            echo '<h3>Fatal Error Details</h3>';
-            echo '<pre>' . print_r([
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-            ], true) . '</pre>';
+            //echo '<h3>Fatal Error Details</h3>';
         }
     }
 

@@ -100,17 +100,23 @@ class bg_routing extends CModule
 
     public function InstallCron()
     {
-
-        CAgent::AddAgent(
-            "\\Background\\AgentFunctions\\Agent::run();", // Команда для выполнения
-            "bg.routing",                      // Модуль
-            "N",                                  // Не повторять при ошибке
-            300,                                // Интервал 
-            "",                                    // Дата первой проверки
-            "Y",                                   // Активность
-            "",                                   // Дата следующего запуска
-            30                                    // Приоритет
+        CAgent::RemoveModuleAgents($this->MODULE_ID);
+        // Создаем нового агента с правильными параметрами
+        $agentId = CAgent::AddAgent(
+            "\\Background\\AgentFunctions\\Agent::execute();", // ОБРАТИТЕ ВНИМАНИЕ на двойной обратный слэш в начале!
+            "bg.routing",                                      // явно указываем ID модуля
+            "N",                                               // не повторять при ошибке
+            300,                                               // интервал 300 секунд (5 минут)
+            "",                                                // дата первой проверки
+            "Y",                                               // активность
+            "",                                                // дата первой проверки (устаревший параметр)
+            100                                                // приоритет (рекомендую 100)
         );
+
+        if ($agentId) {
+            // Дополнительно: записываем ID агента в настройки модуля
+            Option::set($this->MODULE_ID, "main_agent_id", $agentId);
+        }
 
         return true;
     }

@@ -4,42 +4,28 @@ namespace Background\AgentFunctions;
 
 use Exception;
 use Bitrix\Main\Loader;
-use Background\Main\EmailProcessor;
 
 class Agent
 {
-    public static function run()
+    public static function execute()
     {
+        if (!Loader::includeModule('bg.routing')) {
+            file_put_contents(__DIR__ . '/debug_log.txt', "Module bg.routing not found\n", FILE_APPEND);
+            return __METHOD__ . '(1);';
+        }
+		$scriptPath = __DIR__ . '/../rout.php';
         try {
-            if (!Loader::includeModule('bg.routing')) {
-                // echo "Module bg.routing not found\n";
-                file_put_contents(__DIR__ . '/debug_log.txt', "Module bg.routing not found\n", FILE_APPEND);
-                return __METHOD__ . '(1);';
-            }
 
-
-            // Использование класса
-            $processor = new EmailProcessor();
-
-            // 1. Обработка только 10 последних сообщений
-            $processed = $processor->processEmails(10);
-            //echo "Обработано: $processed сообщений";
-
-            // 2. Обработка только новых сообщений (не дубликатов)
-            // $processed = $processor->processNewEmails(5);
-            // echo "Обработано новых: $processed сообщений";
-
-            // 3. Обработка сообщений начиная с определенного номера
-            // $processed = $processor->processEmailsFrom(100, 3);
-            // echo "Обработано: $processed сообщений начиная с №100";
-
-            // 4. Получение количества непрочитанных сообщений
-            // $unprocessed = $processor->getUnprocessedCount();
-            // echo "Непрочитанных сообщений: $unprocessed";
-
-            // 5. Обработка без ограничений (как раньше)
-            // $processed = $processor->processEmails();
-            // echo "Обработано всех сообщений: $processed";
+        if (file_exists($scriptPath)) {
+            // Запускаем через командную строку
+            $command = 'php -f ' . escapeshellarg($scriptPath) . ' 2>&1';
+            $result = shell_exec($command);
+            // file_put_contents(
+            //     __DIR__ . '/agent_exec_log.txt',
+            //     date('Y-m-d H:i:s') . " - Command: $command\nResult: $result\n\n",
+            //     FILE_APPEND
+            // );
+        }
 
             return __METHOD__ . '(3);';
         } catch (Exception $e) {
